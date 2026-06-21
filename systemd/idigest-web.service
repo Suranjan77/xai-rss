@@ -1,0 +1,13 @@
+[Unit]
+Description=idigest web UI
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/sur/repo/local-inference
+ExecStart=/home/sur/repo/local-inference/.venv/bin/idigest serve-web
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

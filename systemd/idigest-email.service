@@ -1,0 +1,9 @@
+[Unit]
+Description=idigest daily byte-size email
+Requires=idigest-llm.service
+After=idigest-llm.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/sur/repo/local-inference
+ExecStart=/home/sur/repo/local-inference/.venv/bin/idigest email

@@ -1,0 +1,8 @@
+# Copy to config.local.toml (git-ignored) and fill in. This file overrides
+# config.toml. Put SECRETS only here.
+
+[email]
+# Gmail App Password (NOT your normal password). Create one at:
+#   Google Account -> Security -> 2-Step Verification -> App passwords
+smtp_user = "you@gmail.com"
+smtp_password = "xxxx xxxx xxxx xxxx"

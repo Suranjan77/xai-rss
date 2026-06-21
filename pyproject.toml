@@ -1,0 +1,32 @@
+[project]
+name = "idigest"
+version = "0.1.0"
+description = "Local interpretability-research daily digest: curated, growing knowledge base + byte-sized daily emails ordered by what to learn first."
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",          # llama-server + arXiv/Semantic Scholar HTTP
+    "fastembed>=0.4",       # CPU ONNX embeddings (no GPU, never competes with the LLM)
+    "sqlite-vec>=0.1.6",    # vector search inside SQLite
+    "fastapi>=0.115",       # local web UI
+    "uvicorn>=0.30",        # ASGI server for the UI
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",          # server-rendered templates
+    "markdown-it-py>=3.0",  # render stored markdown -> HTML in the UI
+    "mdit-py-plugins>=0.4", # dollarmath: parse $...$ math spans safely
+    "matplotlib>=3.8",      # render LaTeX math to inline PNGs for the email
+    "feedparser>=6.0",      # parse arXiv Atom API
+    "python-dateutil>=2.9",
+    "pymupdf>=1.24",        # PDF render + embedded image/caption extraction
+    "opencv-python-headless>=4.9",  # figure-region detection on rendered pages
+    "pillow>=10.0",         # image save/resize for inline email figures
+]
+
+[project.scripts]
+idigest = "idigest.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/idigest"]

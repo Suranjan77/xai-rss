@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{{ p['title'] }} · idigest{% endblock %}
+{% block body %}
+
+<p class="muted"><a href="/">← learning path</a></p>
+<h2 style="margin-bottom:2px">{{ p['title'] }}</h2>
+<p class="muted">
+  {{ authors|join(', ') }}{% if authors %} · {% endif %}{{ p['published'] or '' }} · difficulty {{ p['difficulty'] or '?' }}/5
+</p>
+
+<div style="margin:10px 0">
+  {% for s in ['interesting','read','queued','unread'] %}
+  <form class="inline" method="post" action="/paper/{{ p['id'] }}/status">
+    <input type="hidden" name="status" value="{{ s }}"/>
+    <button {% if p['status']==s %}class="primary"{% endif %}>{{ s }}</button>
+  </form>
+  {% endfor %}
+</div>
+
+<p style="font-size:17px">{{ p['summary_md'] }}</p>
+
+{% if has_figure %}
+<figure>
+  <img src="/figure/{{ p['id'] }}" alt="key figure"/>
+  <figcaption>{{ p['figure_caption'] }}</figcaption>
+</figure>
+{% endif %}
+
+{% if p['intuition_md'] %}
+<h3>Why it clicks</h3>
+<p>{{ p['intuition_md'] }}</p>
+{% endif %}
+
+{% if p['key_insight'] %}<blockquote>{{ p['key_insight'] }}</blockquote>{% endif %}
+
+{% if requires or provides %}
+<div class="concepts card">
+  {% if requires %}<div><strong>Prerequisites:</strong> {% for c in requires %}<span>{{ c }}</span>{% endfor %}</div>{% endif %}
+  {% if provides %}<div style="margin-top:6px"><strong>Teaches:</strong> {% for c in provides %}<span>{{ c }}</span>{% endfor %}</div>{% endif %}
+</div>
+{% endif %}
+
+<h3>Depth</h3>
+<div>{{ depth_html|safe }}</div>
+
+<p style="margin-top:20px">
+  <a class="btn" href="{{ p['pdf_url'] or '#' }}" target="_blank">Open paper PDF →</a>
+  <button id="explore-btn" onclick="startExplore({{ p['id'] }})">Explore deeper (LLM)</button>
+  <span id="explore-status" class="muted" style="margin-left:8px"></span>
+</p>
+
+<script>
+async function startExplore(pid) {
+  const btn = document.getElementById('explore-btn');
+  const status = document.getElementById('explore-status');
+  btn.disabled = true;
+  status.textContent = 'Queued… (runs the local LLM, ~1–2 min)';
+  let res;
+  try {
+    res = await (await fetch(`/paper/${pid}/explore`, {method: 'POST'})).json();
+  } catch (e) { status.textContent = 'Failed to queue.'; btn.disabled = false; return; }
+  if (res.error) { status.textContent = 'Error: ' + res.error; btn.disabled = false; return; }
+  poll(res.job_id, status, btn);
+}
+
+function poll(jobId, status, btn) {
+  // periodic status check against the broker (message-broker style)
+  const timer = setInterval(async () => {
+    let job;
+    try { job = await (await fetch(`/jobs/${jobId}`)).json(); }
+    catch (e) { return; }  // transient; try again next tick
+    if (job.status === 'running') {
+      status.textContent = 'Generating deeper dive…';
+    } else if (job.status === 'done') {
+      clearInterval(timer);
+      status.textContent = 'Done — refreshing.';
+      location.reload();
+    } else if (job.status === 'error') {
+      clearInterval(timer);
+      status.textContent = 'Error: ' + (job.error || 'job failed');
+      btn.disabled = false;
+    }
+  }, 3000);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,7 @@
+config.local.toml
+data/db/
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.fastembed_cache/

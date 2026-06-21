@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Learning path · idigest{% endblock %}
+{% block body %}
+
+<div class="card">
+  <strong>Daily emails:</strong>
+  {% if paused %}
+    <span class="badge interesting">PAUSED</span>
+    <form class="inline" method="post" action="/emails/resume"><button class="primary">Resume</button></form>
+  {% else %}
+    <span class="badge read">active</span>
+    <form class="inline" method="post" action="/emails/pause"><button>Pause</button></form>
+  {% endif %}
+  <span class="muted"> · {{ sent|length }} sent · {{ papers|length }} papers on path</span>
+</div>
+
+<div class="card">
+  <form method="post" action="/import/search" style="display:flex; gap:8px; margin-bottom:8px">
+    <input type="text" name="query" placeholder="Search the web for research to add…"/>
+    <button class="primary" type="submit">Search&nbsp;+&nbsp;add</button>
+  </form>
+  <form method="post" action="/import/pdf" style="display:flex; gap:8px">
+    <input type="text" name="source" placeholder="Import a PDF by URL or local path…"/>
+    <button type="submit">Import PDF</button>
+  </form>
+</div>
+
+{% for p in papers %}
+<div class="row">
+  <span class="pos">{{ loop.index }}</span>
+  <div style="flex:1">
+    <a href="/paper/{{ p['id'] }}">{{ p['title'] }}</a>
+    {% if p['status'] != 'unread' %}<span class="badge {{ p['status'] }}">{{ p['status'] }}</span>{% endif %}
+    {% if p['id'] in sent %}<span class="badge queued">emailed</span>{% endif %}
+    <div class="diff">{{ p['published'] or '' }} · difficulty {{ p['difficulty'] or '?' }}/5 · {{ p['source'] }}</div>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

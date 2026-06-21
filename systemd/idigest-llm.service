@@ -1,0 +1,13 @@
+[Unit]
+Description=idigest local LLM (llama-server, Gemma-4-12B + MTP)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/sur/repo/local-inference
+ExecStart=/home/sur/repo/local-inference/scripts/serve_llm.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

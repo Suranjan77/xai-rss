@@ -1,0 +1,77 @@
+# idigest configuration. All paths absolute. Copy secrets into config.local.toml
+# (git-ignored) which overrides this file; never put the SMTP password here.
+
+[paths]
+db = "/home/sur/repo/local-inference/data/db/idigest.sqlite3"
+seed_dir = "/home/sur/repo/local-inference/data/seed"
+
+# ---------------------------------------------------------------------------
+# LLM backend. CONSTRAINT: only ONE model loads at a time.
+#   - Generation runs on the GPU via a single llama-server (one model).
+#   - Embeddings run on the CPU via fastembed (ONNX) and never load into the
+#     GPU, so they never compete with the generation model.
+# ---------------------------------------------------------------------------
+[llm]
+server_bin = "/home/sur/repo/llama.cpp/build/bin/llama-server"
+host = "127.0.0.1"
+port = 8080
+base_url = "http://127.0.0.1:8080"      # OpenAI-compatible endpoint
+ctx_size = 8192
+n_gpu_layers = 999                       # offload all layers to the iGPU
+request_timeout_s = 600
+
+# Single generation model: Gemma-4-12B-IT for everything (one model loaded at a
+# time). The local LLM backend is exactly this one model.
+active_model = "gemma-12b"
+
+[llm.models.gemma-12b]
+path = "/home/sur/models/google/gguf/gemma-4-12B-it-BF16.gguf"
+# Multi-token prediction. The MTP head is a small (~406 MB) draft GGUF loaded
+# alongside the main model via --spec-type draft-mtp --model-draft; it is NOT a
+# second full model, so it respects the one-model-at-a-time constraint.
+# serve_llm.sh verifies mtp_path exists and falls back to "ngram-cache"
+# (model-free speculation) if it is missing.
+spec_type = "draft-mtp"
+spec_fallback = "ngram-cache"
+spec_draft_n_max = 3
+mtp_path = "/home/sur/models/google/gguf/mtp-gemma-4-12b-it.gguf"
+# Optional vision projector. The digest is text-only, so this stays empty to
+# save memory; set it if you later want image inputs.
+mmproj_path = ""
+
+[embeddings]
+# CPU ONNX model via fastembed. 384-dim. Never uses the GPU.
+model = "BAAI/bge-small-en-v1.5"
+dim = 384
+dedup_cosine_threshold = 0.92            # >= this vs an existing paper => duplicate
+
+[ingest]
+# Broad interpretability scope (XAI + mechanistic interp + ML transparency).
+arxiv_categories = ["cs.LG", "cs.AI", "cs.CL", "cs.CV", "stat.ML"]
+keywords = [
+    "interpretability", "explainability", "explainable", "saliency",
+    "feature attribution", "mechanistic interpretability", "probing",
+    "concept-based", "transparency", "faithfulness", "circuit",
+    "sparse autoencoder", "activation", "counterfactual explanation",
+]
+max_new_per_run = 15
+relevance_min_score = 6                   # LLM 0-10 relevance gate
+
+[email]
+enabled = true
+full_depth = true        # include the full depth (method, math, caveats) inline in the email
+to = "7suranjanpoudel7@gmail.com"
+from = "7suranjanpoudel7@gmail.com"
+smtp_host = "smtp.gmail.com"
+smtp_port = 587
+# smtp_user / smtp_password live in config.local.toml (app password).
+ui_base_url = "http://127.0.0.1:8081"     # "Read full depth ->" links point here
+
+[web]
+host = "127.0.0.1"       # set to "0.0.0.0" only behind a tunnel/VPN, never bare on a public IP
+port = 8081
+# HTTP Basic auth. Leave blank for local-only use; REQUIRED before exposing the
+# UI externally (it has POST routes that run the LLM and write the DB). Put the
+# real values in config.local.toml.
+auth_user = ""
+auth_password = ""

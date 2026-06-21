@@ -1,0 +1,9 @@
+[Unit]
+Description=idigest ingestion (fetch new interpretability papers)
+Requires=idigest-llm.service
+After=idigest-llm.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/sur/repo/local-inference
+ExecStart=/home/sur/repo/local-inference/.venv/bin/idigest ingest
