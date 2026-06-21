@@ -1,5 +1,6 @@
 config.local.toml
 data/db/
+data/figures/
 __pycache__/
 *.pyc
 .venv/
