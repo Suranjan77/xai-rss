@@ -34,10 +34,12 @@ def _render(paper: sqlite3.Row) -> tuple[str, str, str]:
     cfg = load_config()
     ui = cfg["email"]["ui_base_url"].rstrip("/")
     depth_url = f"{ui}/paper/{paper['id']}"
+    audio_url = f"{ui}/audio/{paper['id']}.mp3"
     subject = f"📄 {paper['title']}"
 
     has_fig = bool(paper["figure_path"])
     fig_caption = paper["figure_caption"] if has_fig else ""
+    has_audio = bool(paper["audio_path"]) and paper["audio_path"] != "__none__"
     # HTML-escape model/paper text so a stray '<' or '&' can't break the markup
     e_title = escape(paper["title"])
     e_summary = escape(paper["summary_md"] or "")
@@ -57,6 +59,8 @@ WHY IT CLICKS
 KEY INSIGHT
 {paper['key_insight']}
 """
+    if has_audio:
+        text += f"\n🎧 Listen (streams from your machine): {audio_url}\n"
     if has_fig:
         text += f"\nFIGURE: {fig_caption}\n"
     if full_depth and paper["depth_md"]:
@@ -86,6 +90,7 @@ KEY INSIGHT
 <div style="max-width:620px;margin:0 auto;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a;line-height:1.55">
   <h2 style="margin:0 0 4px">{e_title}</h2>
   <p style="color:#666;margin:0 0 16px;font-size:13px">{paper['published'] or ''} · difficulty {paper['difficulty'] or '?'}/5</p>
+  {f'<p style="margin:6px 0"><a href="{audio_url}" style="display:inline-block;background:#1e7e34;color:#fff;text-decoration:none;border-radius:6px;padding:10px 16px;font-size:15px">🎧 Listen — stream it on your walk</a></p>' if has_audio else ''}
   <p style="font-size:16px">{e_summary}</p>{fig_html}
   <h3 style="margin:20px 0 4px;font-size:14px;text-transform:uppercase;letter-spacing:.5px;color:#555">Why it clicks</h3>
   <p>{e_intuition}</p>
@@ -105,7 +110,10 @@ def build_message(
     figure_path: str | None = None,
     math_images: list[tuple[str, bytes]] | None = None,
 ) -> EmailMessage:
-    """Assemble a multipart email with inline figure (cid:figure) + math images."""
+    """Assemble the email: inline figure + math images. Audio is streamed from the
+    server via a link, not attached."""
+    from pathlib import Path
+
     cfg = load_config()["email"]
     msg = EmailMessage()
     msg["Subject"] = subject
@@ -115,8 +123,6 @@ def build_message(
     msg.add_alternative(html, subtype="html")
     html_part = msg.get_payload()[1]
     if figure_path:
-        from pathlib import Path
-
         html_part.add_related(
             Path(figure_path).read_bytes(), maintype="image", subtype="png", cid="figure"
         )
@@ -157,9 +163,15 @@ def run(dry_run: bool = False) -> int:
             print("llama-server is not running; start scripts/serve_llm.sh first")
             return 1
         paper = generate.ensure_explanations(conn, paper["id"])
+        try:
+            generate.ensure_audio(conn, paper["id"])  # nice-to-have; never block send
+        except Exception as e:
+            print(f"audio generation failed (sending without audio): {e}")
+        paper = store.get_paper(conn, paper["id"])
         subject, text, html, math_images = _render(paper)
         msg = build_message(
-            subject, text, html, figure_path=paper["figure_path"], math_images=math_images
+            subject, text, html, figure_path=paper["figure_path"],
+            math_images=math_images,
         )
         if dry_run:
             fig = paper["figure_path"] or "(none)"

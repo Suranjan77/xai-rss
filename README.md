@@ -63,6 +63,26 @@ systemctl --user list-timers | grep idigest
 
 Email goes out at 07:00, ingestion runs at 06:30 (edit the `.timer` files to taste).
 
+## Audio narration (F5-TTS on GPU)
+
+Each daily paper gets a **single-narrator spoken explainer** (audio-native script
+written by Gemma — no markdown/LaTeX, math spoken in words), synthesized by
+**F5-TTS on the GPU** and **attached as an MP3** to the email (also playable in the
+UI). Episode length adapts to the paper's difficulty.
+
+The TTS stack runs in a **separate venv** (`.venv-tts`) on the system Python so it
+can use Fedora's ROCm PyTorch (the GPU build), kept apart from the main app:
+
+```bash
+sudo dnf install -y python3-torch python3-torchaudio   # ROCm GPU torch for gfx1151
+python3 -m venv --system-site-packages .venv-tts
+.venv-tts/bin/pip install f5-tts
+.venv-tts/bin/pip uninstall -y torchcodec               # CUDA build; we use soundfile instead
+```
+
+Config lives under `[audio]` in `config.toml` (voice reference, `nfe_step` quality/speed,
+bitrate). Synthesis runs on `cuda` automatically; first run downloads the ~1.3 GB model.
+
 ## Remote access (Tailscale)
 
 Reach the UI from your phone/laptop anywhere, privately — the app stays on

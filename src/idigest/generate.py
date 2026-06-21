@@ -114,6 +114,26 @@ def ensure_figure(conn: sqlite3.Connection, paper_id: int) -> None:
     )
 
 
+def ensure_audio(conn: sqlite3.Connection, paper_id: int) -> None:
+    """Generate a narration script + MP3 for the paper if not already attempted."""
+    from . import audio
+    from .config import load_config
+
+    if not load_config()["audio"].get("enabled", True) or not audio.available():
+        return
+    paper = store.get_paper(conn, paper_id)
+    if paper["audio_path"]:
+        return  # already have one, or already tried (sentinel)
+
+    script = write_audio_script(paper)
+    store.upsert_paper(conn, arxiv_id=paper["arxiv_id"], title=paper["title"],
+                       audio_script=script)
+    out = audio.audio_path_for(paper_id)
+    ok = audio.synthesize(script, out)
+    store.upsert_paper(conn, arxiv_id=paper["arxiv_id"], title=paper["title"],
+                       audio_path=str(out) if ok else "__none__")
+
+
 def explore_deeper(paper: sqlite3.Row) -> str:
     """On-demand deeper technical dive for the UI 'Explore deeper' button."""
     msg = [
@@ -129,6 +149,50 @@ def explore_deeper(paper: sqlite3.Row) -> str:
         },
     ]
     return llm.chat(msg, temperature=0.4, max_tokens=2048).strip()
+
+
+_AUDIO_SYS = (
+    "You are the single narrator of a short audio explainer that a listener hears "
+    "while walking — like a calm, smart science podcast host. You speak in natural, "
+    "flowing spoken English: complete sentences, smooth transitions, and vivid "
+    "everyday analogies. " + _FIDELITY_RULE
+)
+
+
+def _audio_target_words(difficulty: int | None) -> int:
+    # adaptive to depth: ~3.5 min (easy) to ~7.5 min (hard) at ~150 wpm
+    d = difficulty if difficulty in (1, 2, 3, 4, 5) else 3
+    return 350 + d * 150
+
+
+def write_audio_script(paper: sqlite3.Row) -> str:
+    """A spoken-word narration script (plain text, audio-native, adaptive length)."""
+    target = _audio_target_words(paper["difficulty"])
+    msg = [
+        {"role": "system", "content": _AUDIO_SYS},
+        {
+            "role": "user",
+            "content": f"""Write a spoken narration that explains this paper for a
+listener on a walk. Aim for about {target} words (this scales with the paper's depth).
+
+Title: {paper['title']}
+Abstract: {paper['abstract'] or '(abstract unavailable)'}
+
+Rules for AUDIO (read aloud — this is critical):
+- Output ONLY the words to be spoken. No markdown, no headings, no bullet points,
+  no lists, no asterisks, no code, and NO LaTeX or math symbols.
+- Speak every formula in plain words: say "the gradient of the loss" not "$\\nabla L$",
+  "x sub i" only if essential, prefer "each input feature".
+- Never say "Figure 2", "Equation 3", "see Section 4", or reference visuals.
+- Open with a one-sentence hook (what it is and why it matters), build intuition with
+  ONE concrete analogy, explain the core mechanism simply, then close with the single
+  takeaway.
+- Use natural spoken transitions ("Here's the key idea…", "So why does this matter?").
+  Short, clear sentences. Define any jargon the moment you use it.
+Return just the narration text.""",
+        },
+    ]
+    return llm.chat(msg, temperature=0.5, max_tokens=4096).strip()
 
 
 def relevance_score(title: str, abstract: str) -> int:

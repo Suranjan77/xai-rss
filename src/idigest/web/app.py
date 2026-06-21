@@ -106,6 +106,7 @@ def paper(request: Request, pid: int):
             "authors": _authors(p["authors"]),
             "depth_html": mathmd.render_ui(p["depth_md"] or ""),
             "has_figure": bool(p["figure_path"]),
+            "has_audio": bool(p["audio_path"]) and p["audio_path"] != "__none__",
             "provides": [c["name"] for c in concepts if c["relation"] == "provides"],
             "requires": [c["name"] for c in concepts if c["relation"] == "requires"],
         },
@@ -119,6 +120,16 @@ def figure(pid: int):
     if p is None or not p["figure_path"] or not Path(p["figure_path"]).exists():
         return HTMLResponse("no figure", status_code=404)
     return FileResponse(p["figure_path"], media_type="image/png")
+
+
+@app.get("/audio/{pid}.mp3")
+def audio(pid: int):
+    with _conn() as conn:
+        p = store.get_paper(conn, pid)
+    ap = p["audio_path"] if p else None
+    if not ap or ap == "__none__" or not Path(ap).exists():
+        return HTMLResponse("no audio", status_code=404)
+    return FileResponse(ap, media_type="audio/mpeg")
 
 
 @app.post("/paper/{pid}/status")

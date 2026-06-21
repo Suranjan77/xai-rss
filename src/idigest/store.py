@@ -71,6 +71,8 @@ def init_db(conn: sqlite3.Connection, dim: int) -> None:
             depth_md       TEXT,              -- full depth (UI)
             figure_path    TEXT,              -- cached key figure (PNG) for the email
             figure_caption TEXT,              -- LLM/extracted caption for the figure
+            audio_script   TEXT,              -- spoken-word narration script
+            audio_path     TEXT,              -- cached MP3 narration
             created_at  TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
@@ -136,6 +138,12 @@ def init_db(conn: sqlite3.Connection, dim: int) -> None:
         f"paper_id INTEGER PRIMARY KEY, "
         f"embedding FLOAT[{dim}] distance_metric=cosine)"
     )
+    # Migrate older DBs: add any missing papers columns (CREATE IF NOT EXISTS
+    # never alters an existing table).
+    have = {r["name"] for r in conn.execute("PRAGMA table_info(papers)")}
+    for col in ("figure_path", "figure_caption", "audio_script", "audio_path"):
+        if col not in have:
+            conn.execute(f"ALTER TABLE papers ADD COLUMN {col} TEXT")
     conn.commit()
 
 

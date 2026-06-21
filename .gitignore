@@ -1,8 +1,10 @@
 config.local.toml
 data/db/
 data/figures/
+data/audio/
 __pycache__/
 *.pyc
 .venv/
+.venv-tts/
 *.egg-info/
 .fastembed_cache/

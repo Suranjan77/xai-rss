@@ -17,6 +17,15 @@
   {% endfor %}
 </div>
 
+{% if has_audio %}
+<div class="card">
+  <strong>🎧 Listen</strong>
+  <audio controls preload="none" style="width:100%;margin-top:6px">
+    <source src="/audio/{{ p['id'] }}.mp3" type="audio/mpeg">
+  </audio>
+</div>
+{% endif %}
+
 <p style="font-size:17px">{{ p['summary_md'] }}</p>
 
 {% if has_figure %}
