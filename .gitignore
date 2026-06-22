@@ -1,4 +1,5 @@
 config.local.toml
+.env
 data/db/
 data/figures/
 data/audio/

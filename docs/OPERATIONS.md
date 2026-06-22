@@ -13,6 +13,9 @@
 | `idigest ingest` | Fetch + filter + add recent interpretability papers |
 | `idigest add-search "<query>" [--limit N]` | Web-search papers and import |
 | `idigest add-pdf <url-or-path>` | Import a paper from a PDF |
+| `idigest add-citations <id> [--direction references\|citations]` | Import a paper's references/citations |
+| `idigest digest [--dry-run]` | Send the weekly digest email |
+| `idigest logs [-f] [-n N]` | Consolidated logs of all idigest services |
 | `idigest serve-web` | Run the local UI |
 
 ## Daily routine (automated)
@@ -21,11 +24,15 @@
 - **07:00** — `idigest-email.timer` sends the next paper (generating explanation, figure,
   and audio first). The email lands a few minutes later if audio is being synthesized.
 
+Long-running services: `idigest-llm` (Gemma), `idigest-tts` (F5-TTS, model resident),
+`idigest-web` (UI). Timer jobs: `idigest-ingest` (05:00), `idigest-email` (07:30),
+`idigest-digest` (Sun 08:00).
+
 Manual control:
 ```bash
+idigest logs -f                               # all services in one stream + what's running
 systemctl --user start idigest-email          # send now
 systemctl --user list-timers | grep idigest   # see schedule
-journalctl --user -u idigest-email -f         # watch a run
 systemctl --user restart idigest-web          # after editing config.local.toml
 ```
 

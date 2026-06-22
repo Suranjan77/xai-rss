@@ -1,0 +1,15 @@
+[Unit]
+Description=idigest F5-TTS host service (GPU, model resident)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/sur/repo/local-inference
+Environment=HSA_OVERRIDE_GFX_VERSION=11.0.0
+Environment=PYTHONHASHSEED=0
+ExecStart=/home/sur/repo/local-inference/.venv-tts/bin/python /home/sur/repo/local-inference/scripts/tts_server.py --host 0.0.0.0 --port 8090 --preload
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

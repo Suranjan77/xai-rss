@@ -68,9 +68,12 @@ smtp_port = 587
 ui_base_url = "http://127.0.0.1:8081"     # "Read full depth ->" links point here
 
 [audio]
-# Spoken narration (single narrator) synthesized by F5-TTS on the GPU (.venv-tts).
-# Attached as an MP3 to the daily email. Length adapts to paper difficulty.
+# Spoken narration (single narrator) synthesized by F5-TTS on the GPU. The TTS
+# runs as a host service (scripts/tts_server.py in .venv-tts, model resident);
+# the app POSTs text to tts_url and gets back an MP3. Set IDIGEST_TTS_URL to
+# override (e.g. from a container). Empty disables audio.
 enabled = true
+tts_url = "http://127.0.0.1:8090"
 ref_file = "/home/sur/repo/local-inference/.venv-tts/lib/python3.14/site-packages/f5_tts/infer/examples/basic/basic_ref_en.wav"
 ref_text = "Some call me nature, others call me mother nature."
 speed = 1.18         # brisker, more energetic delivery (1.0 felt slow/boring)

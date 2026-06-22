@@ -9,9 +9,24 @@ email and played in the UI) — not attached.
 1. **Audio-native script** (`generate.write_audio_script`) — Gemma writes flowing spoken
    prose: no markdown, no headings, no LaTeX; math is spoken in words; signposted
    transitions; a hook open and a takeaway close. Length adapts to the paper's
-   `difficulty` (~3.5 min easy → ~7.5 min hard).
-2. **TTS** (`scripts/tts_synth.py`, run in `.venv-tts`) — F5-TTS synthesizes on `cuda`;
-   `audio.py` encodes the WAV to a compact mono MP3 with ffmpeg.
+   `difficulty` (~3.5 min easy → ~7.5 min hard). Delivery is brisk and energetic
+   (speed 1.18, crossfaded chunks).
+2. **TTS host service** (`scripts/tts_server.py`, run in `.venv-tts`) — F5-TTS stays
+   **resident on the GPU** and renders an MP3 per request. The app (`audio.py`) POSTs the
+   narration text to `[audio] tts_url` (override `IDIGEST_TTS_URL`) and saves the MP3.
+   This keeps the model warm (fast) and works whether the app runs on the host or in a
+   container.
+
+### Setup & run
+
+```bash
+./scripts/setup_tts.sh            # create .venv-tts, install F5-TTS, DOWNLOAD the model
+./scripts/run_tts_server.sh       # run on :8090 (or: systemctl --user start idigest-tts)
+```
+
+`scripts/run_tts_server.sh` / `systemd/idigest-tts.service` set the gfx1151 env
+(`HSA_OVERRIDE_GFX_VERSION=11.0.0`, `PYTHONHASHSEED=0`) and bind `0.0.0.0:8090` so a
+containerized app (network_mode host) can reach it.
 
 The script is persisted (`papers.audio_script`) and the MP3 path (`papers.audio_path`),
 so audio is generated once per paper. A `__none__` sentinel marks "tried, no audio".

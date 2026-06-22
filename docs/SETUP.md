@@ -52,21 +52,14 @@ The TTS stack needs PyTorch-ROCm, which only exists for the **system** Python 3.
 Fedora's packages. It lives in a **separate venv** so it never disturbs the main app:
 
 ```bash
-sudo dnf install -y python3-torch python3-torchaudio   # ROCm/HIP build for gfx1151
-python3 -m venv --system-site-packages .venv-tts
-.venv-tts/bin/pip install f5-tts
-.venv-tts/bin/pip uninstall -y torchcodec               # CUDA-only; we use soundfile
+./scripts/setup_tts.sh            # installs ROCm torch + F5-TTS, downloads the model
+./scripts/run_tts_server.sh       # run the service on :8090
+# or as a service:  cp systemd/idigest-tts.service ~/.config/systemd/user/ &&
+#                    systemctl --user enable --now idigest-tts.service
 ```
 
-Verify the GPU is visible:
-```bash
-.venv-tts/bin/python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
-# -> True AMD Radeon 8060S Graphics
-```
-
-First synthesis downloads the ~1.3 GB F5-TTS model. See [AUDIO](AUDIO.md) for the
-gfx1151-specific env (`HSA_OVERRIDE_GFX_VERSION`, `PYTHONHASHSEED`) — these are applied
-automatically by `audio.py`.
+The app reaches it via `[audio] tts_url` (default `http://127.0.0.1:8090`). See
+[AUDIO](AUDIO.md) for the gfx1151-specific env, which the run script/systemd unit set.
 
 ## 6. Run it
 

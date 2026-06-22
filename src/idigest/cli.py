@@ -110,6 +110,21 @@ def cmd_digest(args: argparse.Namespace) -> int:
     return digest.run(dry_run=args.dry_run)
 
 
+def cmd_logs(extra: list[str]) -> int:
+    """Consolidated logs of all idigest services (host/systemd only)."""
+    import os
+    import subprocess
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[2] / "scripts" / "logs.sh"
+    if not script.exists():
+        print("scripts/logs.sh not found (host-only feature)")
+        return 1
+    env = {**os.environ, "XDG_RUNTIME_DIR": os.environ.get(
+        "XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")}
+    return subprocess.run(["bash", str(script), *extra], env=env).returncode
+
+
 def cmd_serve_web(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -129,6 +144,11 @@ def cmd_path(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw = sys.argv[1:] if argv is None else list(argv)
+    # 'logs' forwards its remaining args to journalctl, so bypass argparse for it.
+    if raw and raw[0] == "logs":
+        return cmd_logs(raw[1:])
+
     p = argparse.ArgumentParser(prog="idigest")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -163,6 +183,9 @@ def main(argv: list[str] | None = None) -> int:
     pd = sub.add_parser("digest", help="send the weekly digest email")
     pd.add_argument("--dry-run", action="store_true")
     pd.set_defaults(func=cmd_digest)
+
+    sub.add_parser("logs", help="consolidated logs of all idigest services "
+                   "(args after 'logs' pass to journalctl, e.g. -f, -n 200)")
 
     sub.add_parser("serve-web").set_defaults(func=cmd_serve_web)
     sub.add_parser("path").set_defaults(func=cmd_path)

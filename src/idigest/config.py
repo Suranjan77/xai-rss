@@ -54,4 +54,6 @@ def load_config() -> dict[str, Any]:
         cfg["paths"]["db"] = db
     if seed := os.environ.get("IDIGEST_SEED_DIR"):
         cfg["paths"]["seed_dir"] = seed
+    if tts := os.environ.get("IDIGEST_TTS_URL"):
+        cfg["audio"]["tts_url"] = tts
     return cfg
