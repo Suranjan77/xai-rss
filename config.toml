@@ -16,27 +16,37 @@ server_bin = "/home/sur/repo/llama.cpp/build/bin/llama-server"
 host = "127.0.0.1"
 port = 8080
 base_url = "http://127.0.0.1:8080"      # OpenAI-compatible endpoint
-ctx_size = 8192
+ctx_size = 16384
 n_gpu_layers = 999                       # offload all layers to the iGPU
 request_timeout_s = 600
 
-# Single generation model: Gemma-4-12B-IT for everything (one model loaded at a
-# time). The local LLM backend is exactly this one model.
-active_model = "gemma-12b"
+# Single generation model (one loaded at a time). The local LLM backend is
+# exactly this one model. Currently the Gemma-4-31B QAT (Q4_K_XL) build — bigger
+# and smarter than the 12B, with its own MTP draft head + vision projector.
+active_model = "gemma-31b"
+
+[llm.models.gemma-31b]
+# 31B QAT, ~17 GB at Q4_K_XL. Heavier than the 12B; expect more VRAM use.
+path = "/home/sur/models/unsloth/gemma-4-31B-it-qat-GGUF/gemma-4-31B-it-qat-UD-Q4_K_XL.gguf"
+# Multi-token prediction draft head (small GGUF, ~280 MB) loaded alongside the
+# main model via --spec-type draft-mtp --model-draft; NOT a second full model,
+# so it respects the one-model-at-a-time constraint. serve_llm.sh verifies the
+# path exists and falls back to "ngram-cache" (model-free) if it is missing.
+spec_type = "draft-mtp"
+spec_fallback = "ngram-cache"
+spec_draft_n_max = 3
+mtp_path = "/home/sur/models/unsloth/gemma-4-31B-it-qat-GGUF/mtp-gemma-4-31B-it.gguf"
+# Vision projector (~1.2 GB). Enables image inputs; costs extra VRAM even when
+# unused. The digest pipeline is text-only, so blank this if you need the memory.
+mmproj_path = "/home/sur/models/unsloth/gemma-4-31B-it-qat-GGUF/mmproj-BF16.gguf"
 
 [llm.models.gemma-12b]
 path = "/home/sur/models/google/gguf/gemma-4-12B-it-BF16.gguf"
-# Multi-token prediction. The MTP head is a small (~406 MB) draft GGUF loaded
-# alongside the main model via --spec-type draft-mtp --model-draft; it is NOT a
-# second full model, so it respects the one-model-at-a-time constraint.
-# serve_llm.sh verifies mtp_path exists and falls back to "ngram-cache"
-# (model-free speculation) if it is missing.
+# MTP draft head (~406 MB); see gemma-31b for how draft-mtp works.
 spec_type = "draft-mtp"
 spec_fallback = "ngram-cache"
 spec_draft_n_max = 3
 mtp_path = "/home/sur/models/google/gguf/mtp-gemma-4-12b-it.gguf"
-# Optional vision projector. The digest is text-only, so this stays empty to
-# save memory; set it if you later want image inputs.
 mmproj_path = ""
 
 [embeddings]

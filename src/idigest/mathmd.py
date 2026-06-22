@@ -12,6 +12,7 @@ math (e.g. turn ``x_i`` into emphasis).
 from __future__ import annotations
 
 import io
+import re
 from html import escape
 
 import matplotlib
@@ -24,6 +25,18 @@ from mdit_py_plugins.dollarmath import dollarmath_plugin  # noqa: E402
 
 def _base_md() -> MarkdownIt:
     return MarkdownIt("commonmark", {"breaks": True, "html": False}).use(dollarmath_plugin)
+
+
+# dollarmath only treats $$...$$ as *display* math when it stands alone as its own
+# paragraph. Models routinely glue a display equation directly onto the prose lines
+# above/below it (no blank line), which makes the inline $...$ scanner pair dollars
+# *across* the block — swallowing the following sentence into a math span (collapsed
+# spaces, MathJax errors). Force every $$...$$ onto its own paragraph before parsing.
+_DISPLAY = re.compile(r"(?<!\$)\$\$(.+?)\$\$", re.DOTALL)
+
+
+def _normalize(md_text: str) -> str:
+    return _DISPLAY.sub(lambda m: "\n\n$$" + m.group(1).strip() + "$$\n\n", md_text or "")
 
 
 # --------------------------------------------------------------------------- #
@@ -43,13 +56,26 @@ ui_md.add_render_rule("math_block", _ui_block)
 
 
 def render_ui(md_text: str) -> str:
-    return ui_md.render(md_text or "")
+    return ui_md.render(_normalize(md_text))
 
 
 # --------------------------------------------------------------------------- #
 # Email: math -> inline PNG images
 # --------------------------------------------------------------------------- #
+# matplotlib mathtext lacks some macros MathJax (the UI) supports. Rewrite the
+# common ones to mathtext-known equivalents so the email PNG renders instead of
+# falling back to <code>. UI path is untouched (MathJax handles the originals).
+_MATHTEXT_SUBS = {
+    "implies": r"\Rightarrow",
+    "impliedby": r"\Leftarrow",
+    "iff": r"\Leftrightarrow",
+}
+# match \macro only when not followed by another letter (so \to ≠ \top)
+_MACRO_RE = re.compile(r"\\(" + "|".join(_MATHTEXT_SUBS) + r")(?![A-Za-z])")
+
+
 def latex_to_png(latex: str, fontsize: int = 16) -> bytes:
+    latex = _MACRO_RE.sub(lambda m: _MATHTEXT_SUBS[m.group(1)], latex)
     fig = plt.figure()
     t = fig.text(0, 0, f"${latex}$", fontsize=fontsize)
     fig.canvas.draw()
@@ -93,5 +119,5 @@ email_md.add_render_rule("math_block", _email_block)
 def render_email_depth(md_text: str) -> tuple[str, list[tuple[str, bytes]]]:
     """Return (html, [(cid, png_bytes), ...]) for the email body."""
     env: dict = {}
-    html = email_md.render(md_text or "", env)
+    html = email_md.render(_normalize(md_text), env)
     return html, env.get("math_images", [])

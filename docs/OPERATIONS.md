@@ -60,10 +60,51 @@ sharing: `sudo tailscale serve --bg 8081 off`.
 - **Audio speed/quality** — `[audio] nfe_step` (16 ≈ 2× faster than 32, still natural),
   `mp3_bitrate`, `speed`. Episode length scales with paper difficulty.
 
+## GPU memory budget (Strix Halo / ROCm)
+
+The box is an **AMD Strix Halo** APU (Radeon 8060S, gfx1151) running llama.cpp on the
+**ROCm** backend. The GPU has no dedicated VRAM — it shares the 62 GB system RAM — but
+the amount it can actually use is **not** the full 62 GB by default. Three numbers, all
+from `/sys/class/drm/card1/device/mem_info_*` and `/sys/module/ttm/parameters/`:
+
+| Limit | Default | Meaning |
+|---|---|---|
+| `mem_info_vram_total` | **0.5 GB** | BIOS VRAM carveout (tiny; irrelevant here) |
+| `mem_info_gtt_total` | **~31 GB** | system RAM the GPU may pin — defaults to **½ of RAM** |
+| `ttm.pages_limit` | **~31 GB** | global cap on GPU-pinnable pages, shared by *all* GPU procs |
+
+**The binding ceiling is ~31 GB (GTT/TTM = half of RAM), not the 62 GB total.** Measured
+budget under that ceiling:
+
+- Gemma-4-31B QAT (Q4_K_XL) + 16k-ctx KV + MTP draft + mmproj ≈ **24.6 GB** at rest.
+- F5-TTS narration adds only **~0.7 GB** (synth peak 25.25 GB) — audio *alone* is fine.
+- Heavy LLM inference (speculative decode + compute buffers) **transiently** spikes GTT.
+
+That leaves only ~6.4 GB of headroom. The daily email runs `ensure_explanations` (LLM
+spike) and then `ensure_audio` (TTS) back-to-back, so the combined transient peak can
+touch the 31 GB ceiling and the kernel OOM-kills a process (seen as **exit 137**). Audio
+is non-blocking, so the email still sends — just without narration.
+
+**To use more of the 62 GB** (recommended; gives ~40–45 GB working room), raise the GTT
+and TTM limits via kernel boot params. Append to the kernel cmdline (e.g. GRUB
+`GRUB_CMDLINE_LINUX`, then `grub2-mkconfig` and reboot):
+
+```
+amdgpu.gttsize=49152 ttm.pages_limit=12582912 ttm.page_pool_size=12582912
+```
+
+`49152` = 48 GB GTT (MiB); `12582912` = 48 GB TTM (pages × 4 KiB). Verify after reboot:
+`cat /sys/class/drm/card1/device/mem_info_gtt_total` (should read ~48 GB). Lower-impact
+alternatives if you'd rather not touch boot params: blank `[llm.models.*] mmproj_path`
+(frees ~1.2 GB, text-only digest doesn't use it), or trim `n_gpu_layers`.
+
 ## Troubleshooting / known gotchas
 
 - **Email empty / model returns nothing** — Gemma always "thinks"; structured calls need
   a generous `max_tokens` to finish thinking before the JSON answer. (Handled in code.)
+- **A process dies with exit 137 during email/generation** — GPU memory (GTT/TTM) ceiling
+  hit; the LLM-spike + TTS back-to-back peak exceeds ~31 GB. Raise the GTT/TTM kernel
+  limits (see *GPU memory budget* above). Audio still won't block the send.
 - **Audio fails silently** — it never blocks the email; check
   `journalctl --user -u idigest-email`. Common gfx1151 fixes (`HSA_OVERRIDE_GFX_VERSION`,
   `PYTHONHASHSEED`) are applied automatically — see [AUDIO](AUDIO.md).
