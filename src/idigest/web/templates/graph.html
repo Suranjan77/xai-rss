@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Graph · idigest{% endblock %}
+{% block body %}
+<h2>Prerequisite graph</h2>
+<p class="muted">Each node is a paper; an arrow A → B means A teaches a concept B needs.
+Node size = difficulty. Drag to explore; click a node to open the paper.</p>
+<div id="net" style="height:640px;border:1px solid var(--line);border-radius:8px"></div>
+<script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/vis-network.min.js"></script>
+<script>
+fetch('/graph.json').then(r => r.json()).then(data => {
+  const nodes = new vis.DataSet(data.nodes);
+  const edges = new vis.DataSet(data.edges);
+  const net = new vis.Network(document.getElementById('net'), {nodes, edges}, {
+    nodes: {shape: 'dot', scaling: {min: 6, max: 26}, font: {size: 13}},
+    edges: {arrows: 'to', color: {opacity: 0.4}, smooth: {type: 'cubicBezier'}},
+    physics: {stabilization: true, barnesHut: {gravitationalConstant: -4000, springLength: 130}},
+    interaction: {hover: true}
+  });
+  net.on('click', params => {
+    if (params.nodes.length) window.location = '/paper/' + params.nodes[0];
+  });
+});
+</script>
+{% endblock %}

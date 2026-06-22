@@ -1,0 +1,43 @@
+# idigest — app container. The local LLM (llama-server/Gemma) and audio TTS run
+# on the HOST (GPU); this container is the CPU app (web UI, ingestion, email).
+#
+# network_mode: host lets the container reach the host's llama-server at
+# 127.0.0.1:8080 and serve the UI on 127.0.0.1:8081 directly. See docs/DOCKER.md.
+services:
+  idigest:
+    build: .
+    image: idigest:latest
+    network_mode: host
+    environment:
+      IDIGEST_LLM_BASE_URL: "http://127.0.0.1:8080"
+    volumes:
+      # secrets + overrides (SMTP app password, tailnet URL, UI auth)
+      - ./config.local.toml:/app/config.local.toml:ro
+      # persistent data: SQLite DB, figures (audio is host-only)
+      - ./data/db:/app/data/db
+      - ./data/figures:/app/data/figures
+      # caches so the CPU embedding model isn't re-downloaded each start
+      - idigest-cache:/app/.cache
+    restart: unless-stopped
+    command: ["idigest", "serve-web"]
+
+  # One-shot jobs: run on demand or from a host timer, e.g.
+  #   docker compose run --rm jobs idigest ingest
+  #   docker compose run --rm jobs idigest email
+  jobs:
+    build: .
+    image: idigest:latest
+    network_mode: host
+    profiles: ["jobs"]
+    environment:
+      IDIGEST_LLM_BASE_URL: "http://127.0.0.1:8080"
+    volumes:
+      - ./config.local.toml:/app/config.local.toml:ro
+      - ./data/db:/app/data/db
+      - ./data/figures:/app/data/figures
+      - idigest-cache:/app/.cache
+    entrypoint: ["/usr/local/bin/entrypoint.sh"]
+    command: ["idigest", "status"]
+
+volumes:
+  idigest-cache:

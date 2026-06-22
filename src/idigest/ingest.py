@@ -7,8 +7,29 @@ extraction + auto-slot) via importer.import_paper. Capped by max_new_per_run.
 
 from __future__ import annotations
 
-from . import generate, importer, sources, store
+from . import email_send, generate, importer, sources, store
 from .config import load_config
+
+
+def pregenerate_next() -> None:
+    """Pre-generate the next email's content (explanation, figure, audio) so the
+    morning send is instant. Failures here never raise — the email job regenerates."""
+    cfg = load_config()
+    with store.connect(cfg["paths"]["db"]) as conn:
+        if store.emails_paused(conn):
+            return
+        nxt = email_send.pick_next(conn)
+        if nxt is None:
+            return
+        pid = nxt["id"]
+    try:
+        with store.connect(cfg["paths"]["db"]) as conn:
+            generate.ensure_explanations(conn, pid)
+        with store.connect(cfg["paths"]["db"]) as conn:
+            generate.ensure_audio(conn, pid)
+        print(f"pre-generated content for paper {pid}: {nxt['title'][:60]}")
+    except Exception as e:
+        print(f"pre-generation failed (email job will retry): {type(e).__name__}: {e}")
 
 
 def run() -> int:
@@ -42,4 +63,7 @@ def run() -> int:
             print(f"  [{'add ' + str(score) + '/10' if created else 'dup'}] {c['title'][:64]}")
             if created:
                 added += 1
+
+    # Operational hardening: prepare the morning email now so 07:30 send is instant.
+    pregenerate_next()
     return added

@@ -1,8 +1,8 @@
 [Unit]
-Description=idigest daily email at 07:00
+Description=idigest daily email at 07:30 (content pre-generated at 05:00)
 
 [Timer]
-OnCalendar=*-*-* 07:00:00
+OnCalendar=*-*-* 07:30:00
 Persistent=true
 
 [Install]

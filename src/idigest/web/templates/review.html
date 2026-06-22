@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Review · idigest{% endblock %}
+{% block body %}
+<h2>Spaced-repetition review</h2>
+{% for r in due %}
+<div class="card">
+  <a href="/paper/{{ r['paper_id'] }}"><strong>{{ r['title'] }}</strong></a>
+  <span class="muted" style="font-size:12px"> · stage {{ r['stage'] }} · due {{ r['due_date'] }}</span>
+  <p style="margin:8px 0">{{ r['question'] or 'Recall the core idea of this paper.' }}</p>
+  <details style="margin-bottom:8px"><summary class="muted" style="cursor:pointer">Show paper</summary>
+    <a href="/paper/{{ r['paper_id'] }}">Open the paper to check yourself →</a></details>
+  <form class="inline" method="post" action="/review/{{ r['paper_id'] }}">
+    <input type="hidden" name="grade" value="again"><button>Again</button></form>
+  <form class="inline" method="post" action="/review/{{ r['paper_id'] }}">
+    <input type="hidden" name="grade" value="good"><button class="primary">Got it</button></form>
+</div>
+{% else %}
+<p class="muted">Nothing due today. Mark papers as <em>read</em> to schedule reviews.</p>
+{% endfor %}
+{% endblock %}

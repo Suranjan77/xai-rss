@@ -152,10 +152,12 @@ def explore_deeper(paper: sqlite3.Row) -> str:
 
 
 _AUDIO_SYS = (
-    "You are the single narrator of a short audio explainer that a listener hears "
-    "while walking — like a calm, smart science podcast host. You speak in natural, "
-    "flowing spoken English: complete sentences, smooth transitions, and vivid "
-    "everyday analogies. " + _FIDELITY_RULE
+    "You are the host of a sharp, energetic science-explainer podcast — think a "
+    "curious, enthusiastic narrator who makes ideas exciting, not a dry lecturer. "
+    "You hook the listener fast, keep momentum, and vary your rhythm: punchy short "
+    "sentences mixed with longer ones, the occasional rhetorical question, and real "
+    "enthusiasm for the clever bits. You speak in natural flowing English with vivid "
+    "everyday analogies. Never monotone, never plodding. " + _FIDELITY_RULE
 )
 
 
@@ -182,17 +184,50 @@ Rules for AUDIO (read aloud — this is critical):
 - Output ONLY the words to be spoken. No markdown, no headings, no bullet points,
   no lists, no asterisks, no code, and NO LaTeX or math symbols.
 - Speak every formula in plain words: say "the gradient of the loss" not "$\\nabla L$",
-  "x sub i" only if essential, prefer "each input feature".
+  prefer "each input feature" over "x sub i".
 - Never say "Figure 2", "Equation 3", "see Section 4", or reference visuals.
-- Open with a one-sentence hook (what it is and why it matters), build intuition with
-  ONE concrete analogy, explain the core mechanism simply, then close with the single
-  takeaway.
-- Use natural spoken transitions ("Here's the key idea…", "So why does this matter?").
-  Short, clear sentences. Define any jargon the moment you use it.
+- Keep it ENGAGING and brisk — this should feel like a great podcast, not a textbook:
+  * Open with a punchy hook (a surprising fact, a question, or a vivid scenario) that
+    makes the listener want to keep walking and listening.
+  * Build intuition with ONE concrete, memorable analogy.
+  * Explain the core mechanism simply, then land on the single big takeaway.
+- Vary sentence length for rhythm; use natural spoken transitions ("Here's the twist…",
+  "So why should you care?"). Show genuine enthusiasm for the clever idea. Define any
+  jargon the instant you use it. No filler, no throat-clearing — get moving fast.
 Return just the narration text.""",
         },
     ]
     return llm.chat(msg, temperature=0.5, max_tokens=4096).strip()
+
+
+def review_question(paper: sqlite3.Row) -> str:
+    """A single short recall question for spaced repetition (#1)."""
+    msg = [
+        {"role": "system", "content": "You write one crisp recall question that tests "
+         "whether someone remembers the core idea of an interpretability paper."},
+        {"role": "user", "content": f"Title: {paper['title']}\n"
+         f"Key insight: {paper['key_insight'] or paper['summary_md'] or paper['abstract']}\n\n"
+         "Write ONE short question (a single sentence) that prompts recall of the main "
+         "idea. Return only the question."},
+    ]
+    try:
+        # large budget: Gemma "thinks" (sometimes a lot) before short answers
+        out = llm.chat(msg, temperature=0.4, max_tokens=1536).strip()
+        return out.splitlines()[0] if out else f"What is the core idea of “{paper['title']}”?"
+    except Exception:
+        return f"What is the core idea of “{paper['title']}”?"
+
+
+def concept_definition(name: str, papers_context: str) -> str:
+    """A short plain-language definition of a concept for the concept page (#7)."""
+    msg = [
+        {"role": "system", "content": "You define machine-learning interpretability "
+         "concepts clearly in 2-3 sentences for a learner."},
+        {"role": "user", "content": f"Concept: {name}\nIt appears in these papers:\n"
+         f"{papers_context}\n\nWrite a 2-3 sentence plain-language definition of "
+         f"“{name}” in interpretability. No markdown."},
+    ]
+    return llm.chat(msg, temperature=0.3, max_tokens=1536).strip()
 
 
 def relevance_score(title: str, abstract: str) -> int:

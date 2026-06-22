@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Tracks · idigest{% endblock %}
+{% block body %}
+<h2>Learning tracks</h2>
+<p class="muted">Pick a lane — each track is the learning path filtered to one topic.</p>
+{% for topic, n in tracks %}
+<div class="row">
+  <div style="flex:1"><a href="/track/{{ topic }}">{{ topic }}</a></div>
+  <div class="muted" style="font-size:12px">{{ n }} paper{{ 's' if n != 1 else '' }}</div>
+</div>
+{% endfor %}
+{% endblock %}

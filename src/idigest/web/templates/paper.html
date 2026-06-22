@@ -44,10 +44,25 @@
 
 {% if requires or provides %}
 <div class="concepts card">
-  {% if requires %}<div><strong>Prerequisites:</strong> {% for c in requires %}<span>{{ c }}</span>{% endfor %}</div>{% endif %}
-  {% if provides %}<div style="margin-top:6px"><strong>Teaches:</strong> {% for c in provides %}<span>{{ c }}</span>{% endfor %}</div>{% endif %}
+  {% if requires %}<div><strong>Prerequisites:</strong> {% for slug, name in requires %}<a href="/concept/{{ slug }}"><span>{{ name }}</span></a>{% endfor %}</div>{% endif %}
+  {% if provides %}<div style="margin-top:6px"><strong>Teaches:</strong> {% for slug, name in provides %}<a href="/concept/{{ slug }}"><span>{{ name }}</span></a>{% endfor %}</div>{% endif %}
 </div>
 {% endif %}
+
+<div class="card">
+  <strong>📝 Notes</strong>
+  {% for n in notes %}
+    <div style="border-bottom:1px solid var(--line);padding:6px 0;font-size:14px">
+      {{ n['text'] }} <span class="muted" style="font-size:12px">· {{ n['created_at'][:10] }}</span>
+    </div>
+  {% else %}
+    <div class="muted" style="font-size:13px;margin:4px 0">No notes yet.</div>
+  {% endfor %}
+  <form method="post" action="/paper/{{ p['id'] }}/note" style="display:flex;gap:8px;margin-top:8px">
+    <input type="text" name="text" placeholder="Add a note or highlight…"/>
+    <button type="submit">Add</button>
+  </form>
+</div>
 
 <h3>Depth</h3>
 <div>{{ depth_html|safe }}</div>

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Concepts · idigest{% endblock %}
+{% block body %}
+<h2>Concepts</h2>
+<p class="muted">The building blocks of the field, drawn from the prerequisite graph.</p>
+{% for c in concepts %}
+<div class="row">
+  <div style="flex:1"><a href="/concept/{{ c['slug'] }}">{{ c['name'] }}</a></div>
+  <div class="muted" style="font-size:12px">teaches {{ c['n_provides'] or 0 }} · needs {{ c['n_requires'] or 0 }}</div>
+</div>
+{% endfor %}
+{% endblock %}

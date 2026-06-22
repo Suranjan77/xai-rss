@@ -29,7 +29,7 @@ def pick_next(conn: sqlite3.Connection) -> sqlite3.Row | None:
     ).fetchone()
 
 
-def _render(paper: sqlite3.Row) -> tuple[str, str, str]:
+def _render(paper: sqlite3.Row, due=()) -> tuple[str, str, str]:
     """Return (subject, text_body, html_body). HTML may reference cid:figure."""
     cfg = load_config()
     ui = cfg["email"]["ui_base_url"].rstrip("/")
@@ -75,6 +75,19 @@ KEY INSIGHT
     <figcaption style="color:#666;font-size:13px;margin-top:6px">{e_caption}</figcaption>
   </figure>"""
 
+    reviews_html = ""
+    if due:
+        ui = load_config()["email"]["ui_base_url"].rstrip("/")
+        items = "".join(
+            f'<li><a href="{ui}/paper/{r["paper_id"]}">{escape(r["title"])}</a> — '
+            f'{escape(r["question"] or "recall the core idea")}</li>' for r in due
+        )
+        reviews_html = (
+            '\n  <div style="margin:16px 0;padding:10px 14px;background:#fff8e6;'
+            'border-radius:6px"><strong>🔁 Quick review (due today)</strong>'
+            f'<ul style="margin:6px 0">{items}</ul></div>'
+        )
+
     depth_html = ""
     math_images: list[tuple[str, bytes]] = []
     if full_depth and paper["depth_md"]:
@@ -94,7 +107,7 @@ KEY INSIGHT
   <p style="font-size:16px">{e_summary}</p>{fig_html}
   <h3 style="margin:20px 0 4px;font-size:14px;text-transform:uppercase;letter-spacing:.5px;color:#555">Why it clicks</h3>
   <p>{e_intuition}</p>
-  <blockquote style="margin:16px 0;padding:10px 16px;background:#f4f6f8;border-left:3px solid #4a7;font-style:italic">{e_insight}</blockquote>{depth_html}
+  <blockquote style="margin:16px 0;padding:10px 16px;background:#f4f6f8;border-left:3px solid #4a7;font-style:italic">{e_insight}</blockquote>{reviews_html}{depth_html}
   <p style="margin-top:24px">
     <a href="{depth_url}" style="display:inline-block;padding:10px 18px;background:#1a73e8;color:#fff;text-decoration:none;border-radius:6px">Open in browser →</a>
     &nbsp;<a href="{paper['pdf_url'] or '#'}" style="color:#1a73e8">Paper PDF</a>
@@ -168,7 +181,8 @@ def run(dry_run: bool = False) -> int:
         except Exception as e:
             print(f"audio generation failed (sending without audio): {e}")
         paper = store.get_paper(conn, paper["id"])
-        subject, text, html, math_images = _render(paper)
+        due = store.due_reviews(conn, limit=3)
+        subject, text, html, math_images = _render(paper, due=due)
         msg = build_message(
             subject, text, html, figure_path=paper["figure_path"],
             math_images=math_images,

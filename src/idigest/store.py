@@ -130,6 +130,24 @@ def init_db(conn: sqlite3.Connection, dim: int) -> None:
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+
+        -- spaced-repetition reviews (#1). One row per paper; reschedules forward.
+        CREATE TABLE IF NOT EXISTS reviews (
+            paper_id  INTEGER PRIMARY KEY REFERENCES papers(id) ON DELETE CASCADE,
+            stage     INTEGER NOT NULL DEFAULT 0,   -- index into the interval ladder
+            due_date  TEXT NOT NULL,                -- ISO date
+            question  TEXT                          -- cached recall prompt
+        );
+        CREATE INDEX IF NOT EXISTS idx_reviews_due ON reviews(due_date);
+
+        -- highlights & notes (#13)
+        CREATE TABLE IF NOT EXISTS notes (
+            id         INTEGER PRIMARY KEY,
+            paper_id   INTEGER NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+            text       TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_notes_paper ON notes(paper_id);
         """
     )
     # sqlite-vec virtual table needs the dim baked in; create separately.
@@ -144,6 +162,9 @@ def init_db(conn: sqlite3.Connection, dim: int) -> None:
     for col in ("figure_path", "figure_caption", "audio_script", "audio_path"):
         if col not in have:
             conn.execute(f"ALTER TABLE papers ADD COLUMN {col} TEXT")
+    have_c = {r["name"] for r in conn.execute("PRAGMA table_info(concepts)")}
+    if "definition" not in have_c:
+        conn.execute("ALTER TABLE concepts ADD COLUMN definition TEXT")
     conn.commit()
 
 
@@ -325,3 +346,99 @@ def fail_job(conn: sqlite3.Connection, job_id: int, error: str) -> None:
 
 def get_job(conn: sqlite3.Connection, job_id: int) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+
+
+# --------------------------------------------------------------------------- #
+# Spaced-repetition reviews (#1)
+# --------------------------------------------------------------------------- #
+REVIEW_INTERVALS = (1, 7, 30, 90, 180)  # days per stage
+
+
+def schedule_review(
+    conn: sqlite3.Connection, paper_id: int, stage: int, question: str | None = None
+) -> None:
+    import datetime as dt
+
+    stage = max(0, min(stage, len(REVIEW_INTERVALS) - 1))
+    due = (dt.date.today() + dt.timedelta(days=REVIEW_INTERVALS[stage])).isoformat()
+    if question is not None:
+        conn.execute(
+            "INSERT INTO reviews(paper_id, stage, due_date, question) VALUES(?,?,?,?) "
+            "ON CONFLICT(paper_id) DO UPDATE SET stage=excluded.stage, "
+            "due_date=excluded.due_date, question=excluded.question",
+            (paper_id, stage, due, question),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO reviews(paper_id, stage, due_date) VALUES(?,?,?) "
+            "ON CONFLICT(paper_id) DO UPDATE SET stage=excluded.stage, due_date=excluded.due_date",
+            (paper_id, stage, due),
+        )
+    conn.commit()
+
+
+def due_reviews(conn: sqlite3.Connection, limit: int = 5) -> list[sqlite3.Row]:
+    import datetime as dt
+
+    return conn.execute(
+        "SELECT r.*, p.title FROM reviews r JOIN papers p ON p.id = r.paper_id "
+        "WHERE r.due_date <= ? ORDER BY r.due_date LIMIT ?",
+        (dt.date.today().isoformat(), limit),
+    ).fetchall()
+
+
+def get_review(conn: sqlite3.Connection, paper_id: int) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM reviews WHERE paper_id=?", (paper_id,)).fetchone()
+
+
+# --------------------------------------------------------------------------- #
+# Notes (#13)
+# --------------------------------------------------------------------------- #
+def add_note(conn: sqlite3.Connection, paper_id: int, text: str) -> None:
+    conn.execute("INSERT INTO notes(paper_id, text) VALUES(?, ?)", (paper_id, text.strip()))
+    conn.commit()
+
+
+def notes_for(conn: sqlite3.Connection, paper_id: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM notes WHERE paper_id=? ORDER BY created_at DESC", (paper_id,)
+    ).fetchall()
+
+
+def recent_notes(conn: sqlite3.Connection, since_iso: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT n.*, p.title FROM notes n JOIN papers p ON p.id = n.paper_id "
+        "WHERE n.created_at >= ? ORDER BY n.created_at DESC",
+        (since_iso,),
+    ).fetchall()
+
+
+# --------------------------------------------------------------------------- #
+# Concepts (#7)
+# --------------------------------------------------------------------------- #
+def concept_by_slug(conn: sqlite3.Connection, slug: str) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM concepts WHERE slug=?", (slug,)).fetchone()
+
+
+def set_concept_definition(conn: sqlite3.Connection, concept_id: int, definition: str) -> None:
+    conn.execute("UPDATE concepts SET definition=? WHERE id=?", (definition, concept_id))
+    conn.commit()
+
+
+def concepts_with_counts(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT c.id, c.slug, c.name, "
+        "  SUM(CASE WHEN pc.relation='provides' THEN 1 ELSE 0 END) AS n_provides, "
+        "  SUM(CASE WHEN pc.relation='requires' THEN 1 ELSE 0 END) AS n_requires "
+        "FROM concepts c LEFT JOIN paper_concepts pc ON pc.concept_id = c.id "
+        "GROUP BY c.id ORDER BY c.name"
+    ).fetchall()
+
+
+def papers_for_concept(conn: sqlite3.Connection, concept_id: int, relation: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT p.* FROM paper_concepts pc JOIN papers p ON p.id = pc.paper_id "
+        "JOIN learning_path lp ON lp.paper_id = p.id "
+        "WHERE pc.concept_id=? AND pc.relation=? ORDER BY lp.position",
+        (concept_id, relation),
+    ).fetchall()

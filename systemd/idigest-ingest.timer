@@ -1,8 +1,8 @@
 [Unit]
-Description=idigest daily paper ingestion
+Description=idigest daily ingestion + pre-generation of the morning email
 
 [Timer]
-OnCalendar=*-*-* 06:30:00
+OnCalendar=*-*-* 05:00:00
 Persistent=true
 
 [Install]

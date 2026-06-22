@@ -96,6 +96,20 @@ def cmd_add_pdf(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_add_citations(args: argparse.Namespace) -> int:
+    from . import importer
+
+    n = importer.add_from_citations(args.paper_id, limit=args.limit, direction=args.direction)
+    print(f"imported {n} papers")
+    return 0
+
+
+def cmd_digest(args: argparse.Namespace) -> int:
+    from . import digest
+
+    return digest.run(dry_run=args.dry_run)
+
+
 def cmd_serve_web(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -139,6 +153,16 @@ def main(argv: list[str] | None = None) -> int:
     pp = sub.add_parser("add-pdf", help="import a paper from a PDF path or URL")
     pp.add_argument("source")
     pp.set_defaults(func=cmd_add_pdf)
+
+    pc = sub.add_parser("add-citations", help="import a paper's references/citations")
+    pc.add_argument("paper_id", type=int)
+    pc.add_argument("--limit", type=int, default=5)
+    pc.add_argument("--direction", choices=["references", "citations"], default="references")
+    pc.set_defaults(func=cmd_add_citations)
+
+    pd = sub.add_parser("digest", help="send the weekly digest email")
+    pd.add_argument("--dry-run", action="store_true")
+    pd.set_defaults(func=cmd_digest)
 
     sub.add_parser("serve-web").set_defaults(func=cmd_serve_web)
     sub.add_parser("path").set_defaults(func=cmd_path)

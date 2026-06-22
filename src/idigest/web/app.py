@@ -94,10 +94,11 @@ def paper(request: Request, pid: int):
         if not (p["summary_md"] and p["depth_md"]):
             p = generate.ensure_explanations(conn, pid)
         concepts = conn.execute(
-            "SELECT c.name, pc.relation FROM paper_concepts pc "
+            "SELECT c.slug, c.name, pc.relation FROM paper_concepts pc "
             "JOIN concepts c ON c.id = pc.concept_id WHERE pc.paper_id=? ORDER BY pc.relation",
             (pid,),
         ).fetchall()
+        notes = store.notes_for(conn, pid)
     return _TEMPLATES.TemplateResponse(
         request,
         "paper.html",
@@ -107,8 +108,9 @@ def paper(request: Request, pid: int):
             "depth_html": mathmd.render_ui(p["depth_md"] or ""),
             "has_figure": bool(p["figure_path"]),
             "has_audio": bool(p["audio_path"]) and p["audio_path"] != "__none__",
-            "provides": [c["name"] for c in concepts if c["relation"] == "provides"],
-            "requires": [c["name"] for c in concepts if c["relation"] == "requires"],
+            "provides": [(c["slug"], c["name"]) for c in concepts if c["relation"] == "provides"],
+            "requires": [(c["slug"], c["name"]) for c in concepts if c["relation"] == "requires"],
+            "notes": notes,
         },
     )
 
@@ -136,6 +138,22 @@ def audio(pid: int):
 def set_status(pid: int, status: str = Form(...)):
     with _conn() as conn:
         store.set_status(conn, pid, status)
+        # mark-read schedules the first spaced-repetition review (#1)
+        if status == "read" and store.get_review(conn, pid) is None:
+            p = store.get_paper(conn, pid)
+            try:
+                q = generate.review_question(p)
+            except Exception:
+                q = None
+            store.schedule_review(conn, pid, stage=0, question=q)
+    return RedirectResponse(f"/paper/{pid}", status_code=303)
+
+
+@app.post("/paper/{pid}/note")
+def add_note(pid: int, text: str = Form(...)):
+    if text.strip():
+        with _conn() as conn:
+            store.add_note(conn, pid, text)
     return RedirectResponse(f"/paper/{pid}", status_code=303)
 
 
@@ -178,3 +196,119 @@ def import_search(query: str = Form(...), limit: int = Form(3)):
 def import_pdf(source: str = Form(...)):
     importer.add_from_pdf(source)
     return RedirectResponse("/", status_code=303)
+
+
+# --------------------------------------------------------------------------- #
+# Spaced-repetition review (#1)
+# --------------------------------------------------------------------------- #
+@app.get("/review", response_class=HTMLResponse)
+def review_page(request: Request):
+    with _conn() as conn:
+        due = store.due_reviews(conn, limit=20)
+    return _TEMPLATES.TemplateResponse(request, "review.html", {"due": due})
+
+
+@app.post("/review/{pid}")
+def grade_review(pid: int, grade: str = Form(...)):
+    """grade 'good' advances the interval ladder; 'again' resets to stage 0."""
+    with _conn() as conn:
+        r = store.get_review(conn, pid)
+        stage = (r["stage"] + 1) if (r and grade == "good") else 0
+        store.schedule_review(conn, pid, stage=stage,
+                              question=r["question"] if r else None)
+    return RedirectResponse("/review", status_code=303)
+
+
+# --------------------------------------------------------------------------- #
+# Concept pages (#7)
+# --------------------------------------------------------------------------- #
+@app.get("/concepts", response_class=HTMLResponse)
+def concepts_page(request: Request):
+    with _conn() as conn:
+        concepts = store.concepts_with_counts(conn)
+    return _TEMPLATES.TemplateResponse(request, "concepts.html", {"concepts": concepts})
+
+
+@app.get("/concept/{slug}", response_class=HTMLResponse)
+def concept_page(request: Request, slug: str):
+    with _conn() as conn:
+        c = store.concept_by_slug(conn, slug)
+        if c is None:
+            return HTMLResponse("unknown concept", status_code=404)
+        provides = store.papers_for_concept(conn, c["id"], "provides")
+        requires = store.papers_for_concept(conn, c["id"], "requires")
+        definition = c["definition"]
+        if not definition:
+            ctx = "; ".join(p["title"] for p in (provides + requires)[:6])
+            try:
+                definition = generate.concept_definition(c["name"], ctx)
+                store.set_concept_definition(conn, c["id"], definition)
+            except Exception:
+                definition = ""
+    return _TEMPLATES.TemplateResponse(
+        request, "concept.html",
+        {"c": c, "definition": definition, "provides": provides, "requires": requires},
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Multi-track learning paths (#8)
+# --------------------------------------------------------------------------- #
+@app.get("/tracks", response_class=HTMLResponse)
+def tracks_page(request: Request):
+    import json as _json
+
+    with _conn() as conn:
+        rows = conn.execute("SELECT topics FROM papers WHERE topics IS NOT NULL").fetchall()
+    counts: dict[str, int] = {}
+    for r in rows:
+        try:
+            for t in _json.loads(r["topics"] or "[]"):
+                counts[t] = counts.get(t, 0) + 1
+        except (ValueError, TypeError):
+            pass
+    tracks = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return _TEMPLATES.TemplateResponse(request, "tracks.html", {"tracks": tracks})
+
+
+@app.get("/track/{topic}", response_class=HTMLResponse)
+def track_page(request: Request, topic: str):
+    with _conn() as conn:
+        papers = [p for p in pathing.ordered_path(conn)
+                  if topic in _authors_to_list(p["topics"])]
+    return _TEMPLATES.TemplateResponse(
+        request, "track.html", {"topic": topic, "papers": papers}
+    )
+
+
+def _authors_to_list(raw: str | None) -> list[str]:
+    return _authors(raw)
+
+
+# --------------------------------------------------------------------------- #
+# Interactive prerequisite graph (#9)
+# --------------------------------------------------------------------------- #
+@app.get("/graph", response_class=HTMLResponse)
+def graph_page(request: Request):
+    return _TEMPLATES.TemplateResponse(request, "graph.html", {})
+
+
+@app.get("/graph.json")
+def graph_data():
+    """Nodes = papers; edges = A→B where A provides a concept B requires."""
+    with _conn() as conn:
+        papers = conn.execute(
+            "SELECT p.id, p.title, p.difficulty FROM papers p "
+            "JOIN learning_path lp ON lp.paper_id=p.id ORDER BY lp.position"
+        ).fetchall()
+        edges = conn.execute(
+            "SELECT DISTINCT prov.paper_id AS src, req.paper_id AS dst "
+            "FROM paper_concepts prov JOIN paper_concepts req "
+            "  ON prov.concept_id=req.concept_id "
+            "WHERE prov.relation='provides' AND req.relation='requires' "
+            "  AND prov.paper_id != req.paper_id"
+        ).fetchall()
+    nodes = [{"id": p["id"], "label": p["title"][:40],
+              "title": p["title"], "value": p["difficulty"] or 3} for p in papers]
+    links = [{"from": e["src"], "to": e["dst"]} for e in edges]
+    return JSONResponse({"nodes": nodes, "edges": links})

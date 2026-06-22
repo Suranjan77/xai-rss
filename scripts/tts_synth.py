@@ -52,27 +52,47 @@ def main() -> int:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     f5 = F5TTS(device=device)
 
-    # Drive F5-TTS one small (single-batch) chunk at a time and concatenate.
-    # The multi-batch path spawns a worker that fails to init under Python 3.14;
-    # single-batch inference is reliable. ~120 chars keeps each call to one batch.
-    chunks = chunk_text(gen_text, max_chars=120) or [gen_text]
+    # Drive F5-TTS one small (single-batch) chunk at a time. The multi-batch path
+    # spawns a worker that fails to init under Python 3.14; single-batch is
+    # reliable. ~140 chars per chunk keeps each call to one batch while reducing
+    # the number of joins (smoother, faster).
+    chunks = chunk_text(gen_text, max_chars=140) or [gen_text]
     pieces, sr = [], f5.target_sample_rate
-    gap = np.zeros(int(0.15 * sr), dtype=np.float32)
     for i, ch in enumerate(chunks):
         if not ch.strip():
             continue
         wav, sr, _ = f5.infer(
             ref_file=args.ref, ref_text=args.ref_text, gen_text=ch,
-            nfe_step=args.nfe, speed=args.speed, remove_silence=False,
+            nfe_step=args.nfe, speed=args.speed, remove_silence=True,
         )
         pieces.append(np.asarray(wav, dtype=np.float32))
-        pieces.append(gap)
         print(f"  chunk {i + 1}/{len(chunks)} done", flush=True)
 
-    final = np.concatenate(pieces) if pieces else np.zeros(1, dtype=np.float32)
+    final = _crossfade(pieces, sr, seconds=0.08)
     sf.write(args.out_wav, final, sr)
     print(f"wrote {args.out_wav} on {device} ({len(final) / sr:.1f}s, {len(chunks)} chunks)")
     return 0
+
+
+def _crossfade(pieces, sr, seconds=0.08):
+    """Concatenate chunks with a short equal-power crossfade for smooth, non-choppy
+    transitions (replaces the old fixed silence gaps that made it sound staccato)."""
+    import numpy as np
+
+    pieces = [p for p in pieces if len(p)]
+    if not pieces:
+        return np.zeros(1, dtype="float32")
+    n = max(1, int(seconds * sr))
+    out = pieces[0].astype("float32")
+    for p in pieces[1:]:
+        p = p.astype("float32")
+        if len(out) >= n and len(p) >= n:
+            fade = np.linspace(1.0, 0.0, n, dtype="float32")
+            out[-n:] = out[-n:] * fade + p[:n] * (1.0 - fade)
+            out = np.concatenate([out, p[n:]])
+        else:
+            out = np.concatenate([out, p])
+    return out
 
 
 if __name__ == "__main__":

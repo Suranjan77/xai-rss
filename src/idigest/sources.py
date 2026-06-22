@@ -90,6 +90,49 @@ def search_arxiv_recent(categories: list[str], keywords: list[str], max_results:
     return results
 
 
+def _s2_papers_from(items: list[dict], key: str) -> list[dict[str, Any]]:
+    out = []
+    for it in items:
+        p = it.get(key) or {}
+        ext = p.get("externalIds") or {}
+        if not (p.get("title") and p.get("abstract")):
+            continue
+        out.append({
+            "title": p["title"].strip(),
+            "abstract": p["abstract"].strip(),
+            "arxiv_id": ext.get("ArXiv"),
+            "authors": [a.get("name") for a in (p.get("authors") or [])],
+            "published": str(p.get("year") or ""),
+            "pdf_url": (p.get("openAccessPdf") or {}).get("url")
+            or (f"https://arxiv.org/pdf/{ext['ArXiv']}" if ext.get("ArXiv") else None),
+        })
+    return out
+
+
+def fetch_references(arxiv_id: str, max_results: int = 20) -> list[dict[str, Any]]:
+    """Papers this paper cites (its references), via Semantic Scholar (#11)."""
+    return _s2_related(arxiv_id, "references", max_results)
+
+
+def fetch_citations(arxiv_id: str, max_results: int = 20) -> list[dict[str, Any]]:
+    """Papers that cite this paper, via Semantic Scholar (#11)."""
+    return _s2_related(arxiv_id, "citations", max_results)
+
+
+def _s2_related(arxiv_id: str, kind: str, max_results: int) -> list[dict[str, Any]]:
+    fields = "title,abstract,year,authors,externalIds,openAccessPdf"
+    url = f"https://api.semanticscholar.org/graph/v1/paper/ARXIV:{arxiv_id}/{kind}"
+    try:
+        r = httpx.get(url, params={"limit": max_results, "fields": fields},
+                      timeout=30, follow_redirects=True)
+        r.raise_for_status()
+        data = r.json()
+    except (httpx.HTTPError, ValueError):
+        return []
+    inner_key = "citedPaper" if kind == "references" else "citingPaper"
+    return _s2_papers_from(data.get("data", []), inner_key)
+
+
 def search_semantic_scholar(query: str, max_results: int = 10) -> list[dict[str, Any]]:
     fields = "title,abstract,year,authors,externalIds,openAccessPdf"
     try:

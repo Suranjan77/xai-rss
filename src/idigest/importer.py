@@ -93,6 +93,36 @@ def add_from_search(query: str, limit: int = 5, auto: bool = False) -> int:
     return imported
 
 
+def add_from_citations(paper_id: int, limit: int = 5, direction: str = "references") -> int:
+    """Follow a paper's references/citations and import the relevant ones (#11)."""
+    cfg = load_config()
+    with store.connect(cfg["paths"]["db"]) as conn:
+        p = store.get_paper(conn, paper_id)
+        if p is None or not p["arxiv_id"]:
+            print("paper has no arXiv id; cannot follow citations")
+            return 0
+        aid = p["arxiv_id"]
+
+    related = (sources.fetch_references(aid, limit * 3) if direction == "references"
+               else sources.fetch_citations(aid, limit * 3))
+    imported = 0
+    with store.connect(cfg["paths"]["db"]) as conn:
+        for h in related:
+            if imported >= limit:
+                break
+            if not h.get("abstract"):
+                continue
+            try:
+                _pid, created = import_paper(conn, h, source="citation")
+            except Exception as e:
+                print(f"  [error] {h['title'][:56]}: {type(e).__name__}: {e}")
+                continue
+            print(f"  [{'added' if created else 'dup'}] {h['title'][:70]}")
+            if created:
+                imported += 1
+    return imported
+
+
 # --------------------------------------------------------------------------- #
 # PDF import
 # --------------------------------------------------------------------------- #

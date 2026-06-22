@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ c['name'] }} · idigest{% endblock %}
+{% block body %}
+<p class="muted"><a href="/concepts">← concepts</a></p>
+<h2>{{ c['name'] }}</h2>
+{% if definition %}<p style="font-size:16px">{{ definition }}</p>{% endif %}
+
+{% if provides %}
+<h3>Taught by</h3>
+{% for p in provides %}
+<div class="row"><div style="flex:1"><a href="/paper/{{ p['id'] }}">{{ p['title'] }}</a></div>
+  <div class="diff">difficulty {{ p['difficulty'] or '?' }}/5</div></div>
+{% endfor %}
+{% endif %}
+
+{% if requires %}
+<h3>Used by</h3>
+{% for p in requires %}
+<div class="row"><div style="flex:1"><a href="/paper/{{ p['id'] }}">{{ p['title'] }}</a></div>
+  <div class="diff">difficulty {{ p['difficulty'] or '?' }}/5</div></div>
+{% endfor %}
+{% endif %}
+{% endblock %}

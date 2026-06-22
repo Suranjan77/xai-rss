@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ topic }} track · idigest{% endblock %}
+{% block body %}
+<p class="muted"><a href="/tracks">← tracks</a></p>
+<h2>{{ topic }}</h2>
+<p class="muted">In learning order.</p>
+{% for p in papers %}
+<div class="row">
+  <span class="pos">{{ loop.index }}</span>
+  <div style="flex:1">
+    <a href="/paper/{{ p['id'] }}">{{ p['title'] }}</a>
+    {% if p['status'] != 'unread' %}<span class="badge {{ p['status'] }}">{{ p['status'] }}</span>{% endif %}
+    <div class="diff">difficulty {{ p['difficulty'] or '?' }}/5</div>
+  </div>
+</div>
+{% else %}
+<p class="muted">No papers in this track yet.</p>
+{% endfor %}
+{% endblock %}
